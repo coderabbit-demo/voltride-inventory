@@ -1,0 +1,103 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# voltride-inventory is a leaf service in the VoltRide multi-repo system.
+# Its consumers live in OTHER repositories and hand-maintain local copies of
+# this service's wire format (no shared types package, no codegen). No
+# compiler spans the repo boundary, so wire-format changes here are only
+# ever caught by review.
+
+language: "en-US"
+
+tone_instructions: >-
+  Prioritize cross-repo compatibility over style. When this service's HTTP
+  contract changes, name every consumer repository and file that breaks and
+  the runtime symptom. Never rate a contract change low risk because the
+  diff is small.
+
+reviews:
+  profile: "assertive"
+  high_level_summary: true
+  request_changes_workflow: true
+
+  path_instructions:
+    - path: "**"
+      instructions: >-
+        This repo produces HTTP contracts consumed by three sibling repos
+        that keep their own local decoders. Treat ANY change to a wire-format
+        element — a JSON struct tag, field type or unit, an enum or status
+        string value, an endpoint path or method, or a response status code —
+        as a BREAKING CHANGE for the linked repositories. Enumerate every
+        consumer exhaustively; finding one broken consumer does not end the
+        analysis. The stock record (productId, stockCount, warehouse,
+        restockEtaDays) is decoded by coderabbit-demo/voltride-catalog
+        (src/types.ts via src/clients/inventoryClient.ts — stockCount becomes
+        undefined and every product shows "Backordered"),
+        coderabbit-demo/voltride-pricing (inventory_client.py —
+        data.get("stockCount", 0) silently reads 0 and corrupts every
+        discount/surcharge decision), and coderabbit-demo/voltride-orders
+        (clients.go StockRecord — Go decodes missing keys SILENTLY as zero
+        values, inflating delivery estimates; silent consumers must be named
+        even when a louder failure exists, as they are the most dangerous).
+        The reservation response's status value "reserved" is load-bearing:
+        voltride-orders rejects any other string in clients.go and rolls back
+        every checkout. Semantic changes (a status string's meaning, a
+        field's unit or sign convention) are just as breaking as renames even
+        though every payload still parses. Severity for an unaccompanied
+        contract change is CRITICAL: the blast radius lives in other
+        repositories, so a small diff means higher risk, not lower.
+
+  labeling_instructions:
+    - label: "breaking-change"
+      instructions: >-
+        Apply when the PR changes any wire-format element of this service's
+        HTTP API (JSON field name/type/unit, enum or status string, endpoint
+        path or method, status code) that the linked consumer repositories
+        decode.
+    - label: "cross-repo-impact"
+      instructions: >-
+        Apply when a change here alters the runtime behavior of
+        voltride-catalog, voltride-pricing, or voltride-orders, even if every
+        payload still parses (e.g. semantic or unit changes).
+
+  pre_merge_checks:
+    custom_checks:
+      - name: "Cross-repo contract compatibility"
+        mode: "error"
+        instructions: >-
+          FAIL this check if the PR modifies any wire-format element this
+          service produces — a JSON field name, a field's type or unit, an
+          enum/status string value, an endpoint path or method, or a response
+          status code. Consumers live in the linked repositories
+          (voltride-catalog, voltride-pricing, voltride-orders) and CANNOT be
+          fixed in this PR, so a producer-side contract change may only PASS
+          when the PR description links coordinated pull requests updating
+          every affected consumer repo, or the change is demonstrably
+          additive (new optional field or new endpoint that no consumer
+          decodes). Semantic changes count: altering a status string's value
+          or a money field's unit is a contract change even when all shapes
+          still parse.
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "AGENTS.md"
+  linked_repositories:
+    - repository: "coderabbit-demo/voltride-catalog"
+      instructions: >-
+        Consumer of this repo's stock records: src/types.ts and
+        src/clients/inventoryClient.ts decode GET /api/stock/:id and
+        POST /api/stock/batch responses (stockCount, restockEtaDays) for
+        stock badges and product detail.
+    - repository: "coderabbit-demo/voltride-pricing"
+      instructions: >-
+        Consumer of this repo's stock records: inventory_client.py reads
+        stockCount per product to apply clearance discounts (>20) and
+        low-stock surcharges (<=2). A missing key silently reads as 0.
+    - repository: "coderabbit-demo/voltride-orders"
+      instructions: >-
+        Consumer of this repo's stock records and reservation API:
+        clients.go decodes StockRecord (stockCount, restockEtaDays) for
+        delivery estimates and reserveStock, which requires the exact status
+        string "reserved" and the 409 insufficient_stock error body. Go
+        decodes missing JSON keys silently as zero values.
