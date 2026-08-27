@@ -95,7 +95,7 @@ func (s *Store) Reserve(req ReservationRequest) (ReservationResponse, *Insuffici
 		})
 	}
 
-	return ReservationResponse{ReservationID: res.id, Status: "reserved", Items: reserved}, nil
+	return ReservationResponse{ReservationID: res.id, Status: "confirmed", Items: reserved}, nil
 }
 
 // Release returns a reservation's stock to the pool (checkout rollback).
