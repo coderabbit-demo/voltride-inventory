@@ -5,7 +5,7 @@ package main
 // orders (delivery estimates). Renaming a JSON tag here breaks all three.
 type StockRecord struct {
 	ProductID     string `json:"productId"`
-	StockCount    int    `json:"stockCount"`
+	StockCount    int    `json:"availableUnits"`
 	Warehouse     string `json:"warehouse"`
 	RestockEtaDays int   `json:"restockEtaDays"`
 }
@@ -46,5 +46,5 @@ type InsufficientStockError struct {
 	Error      string `json:"error"`
 	ProductID  string `json:"productId"`
 	Requested  int    `json:"requested"`
-	StockCount int    `json:"stockCount"`
+	StockCount int    `json:"availableUnits"`
 }
